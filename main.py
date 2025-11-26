@@ -6,11 +6,13 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 app = FastAPI()
+load_dotenv()
 
 # 설정
-OPENROUTER_API_KEY = "오픈 라우터 api key 입력"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 YOUR_SITE_URL = "http://localhost:8000" # 배포 시 실제 서버 IP나 도메인으로 변경
 YOUR_SITE_NAME = "BouquetService"
 TARGET_MODEL = "google/gemini-3-pro-image-preview"
@@ -18,6 +20,9 @@ TARGET_MODEL = "google/gemini-3-pro-image-preview"
 # google/gemini-2.5-flash-image-preview 
 # openai/gpt-5-image-mini
 # google/gemini-3-pro-image-preview 
+
+if not OPENROUTER_API_KEY:
+    raise ValueError("API Key가 없습니다! 환경 변수를 확인하세요.")
 
 RESULT_DIR = "static/results"
 os.makedirs(RESULT_DIR, exist_ok=True)
