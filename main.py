@@ -8,12 +8,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-app = FastAPI()
 load_dotenv()
 
-# 설정
+app = FastAPI()
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-YOUR_SITE_URL = "http://localhost:8000" # 배포 시 실제 서버 IP나 도메인으로 변경
+# 배포된 서버의 주소 - 나중에 팀원이 알려주는 실제 도메인/IP로 변경 필요
+YOUR_SITE_URL = "http://localhost:8000" 
 YOUR_SITE_NAME = "BouquetService"
 TARGET_MODEL = "google/gemini-3-pro-image-preview"
 
@@ -21,35 +22,37 @@ TARGET_MODEL = "google/gemini-3-pro-image-preview"
 # openai/gpt-5-image-mini
 # google/gemini-3-pro-image-preview 
 
-if not OPENROUTER_API_KEY:
-    raise ValueError("API Key가 없습니다! 환경 변수를 확인하세요.")
-
 RESULT_DIR = "static/results"
 os.makedirs(RESULT_DIR, exist_ok=True)
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# URL 문자열을 input으로
 class CompositeRequest(BaseModel):
-    user_image_url: str     # 예: "http://백엔드서버/images/user1.jpg"
-    bouquet_image_url: str  # 예: "http://백엔드서버/images/bouquet3.jpg"
+    user_image_url: str
+    bouquet_image_url: str
     prompt_option: str = "standard and natural size"
 
 @app.post("/api/composite-bouquet")
 async def composite_bouquet(request: CompositeRequest):
-    print(f">>> URL 요청 수신: {request.user_image_url}, {request.bouquet_image_url}")
+    if not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=500, detail="API Key가 설정되지 않았습니다.")
+
+    print(f">>> 요청 수신: {request.user_image_url}")
 
     try:
+        # URL -> Base64 변환 함수
         def url_to_base64(url):
-            res = requests.get(url)
-            if res.status_code != 200:
-                raise Exception(f"이미지 다운로드 실패: {url}")
-            return base64.b64encode(res.content).decode("utf-8")
+            try:
+                res = requests.get(url, timeout=10)
+                if res.status_code != 200:
+                    raise Exception(f"다운로드 실패: {res.status_code}")
+                return base64.b64encode(res.content).decode("utf-8")
+            except Exception as e:
+                raise Exception(f"이미지 처리 중 오류: {str(e)}")
 
         user_b64 = url_to_base64(request.user_image_url)
         bouquet_b64 = url_to_base64(request.bouquet_image_url)
 
-    # 2) 마스터 프롬프트 
+        # Gemini 프롬프트
         master_prompt = (
         "Combine the two provided images. "
         "The first image shows a person (bride). "
@@ -61,7 +64,7 @@ async def composite_bouquet(request: CompositeRequest):
         "The final image should be a high-quality, elegant wedding photo."
     )
 
-    # 3) OpenRouter API 호출
+
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -69,7 +72,6 @@ async def composite_bouquet(request: CompositeRequest):
             "HTTP-Referer": YOUR_SITE_URL,
             "X-Title": YOUR_SITE_NAME,
         }
-        
         payload = {
             "model": TARGET_MODEL,
             "messages": [
@@ -77,22 +79,20 @@ async def composite_bouquet(request: CompositeRequest):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": master_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{user_b64}"}}, # 이미지 1
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{bouquet_b64}"}} # 이미지 2
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{user_b64}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{bouquet_b64}"}}
                     ]
                 }
             ]
         }
 
-        print(">>> Gemini에게 생성 요청 중...")
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
-        
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"Gemini API Error: {response.text}")
+        res = requests.post(url, headers=headers, data=json.dumps(payload))
+        if res.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"AI 모델 오류: {res.text}")
             
-        result = response.json()
-
-        # 4) 결과 이미지 파싱 및 저장
+        result = res.json()
+        
+        # 결과 파싱
         final_data = None
         if 'choices' in result and result['choices']:
             content = result['choices'][0]['message']
@@ -102,8 +102,9 @@ async def composite_bouquet(request: CompositeRequest):
                 final_data = content['content']
         
         if not final_data:
-             raise HTTPException(status_code=500, detail="이미지 생성 실패")
+             raise HTTPException(status_code=500, detail="이미지 생성 데이터 없음")
 
+        # 파일 저장
         filename = f"{uuid.uuid4()}.png"
         save_path = os.path.join(RESULT_DIR, filename)
 
@@ -115,14 +116,13 @@ async def composite_bouquet(request: CompositeRequest):
             with open(save_path, "wb") as f:
                 f.write(img_res.content)
 
-        # 결과 URL 반환
-        full_image_url = f"{YOUR_SITE_URL}/static/results/{filename}"
-        
+        # 결과 URL 반환 (EC2 서버 주소로 바꿔야 함)
+        # 일단은 상대 경로로 주거나, 나중에 EC2 IP를 알면 그걸로 변경
         return {
             "status": "success",
-            "result_image_url": full_image_url
+            "result_image_url": f"/static/results/{filename}" 
         }
 
     except Exception as e:
-        print(f"에러 발생: {e}")
+        print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
