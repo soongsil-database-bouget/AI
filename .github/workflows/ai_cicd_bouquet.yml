@@ -1,0 +1,77 @@
+name: ai_cicd_bouquet
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.py'
+      - '.github/workflows/ai_cicd_bouquet.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ai-modules-bouquet-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TARGET_DIR: /home/ec2-user/fastapi
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Preflight – check required secrets
+        run: |
+          [ -n "${{ secrets.EC2_HOST }}" ] && \
+          [ -n "${{ secrets.EC2_USER }}" ] && \
+          [ -n "${{ secrets.EC2_SSH_KEY }}" ] || {
+            echo "Missing one of: EC2_HOST / EC2_USER / EC2_SSH_KEY";
+            exit 1;
+          }
+
+      - name: Upload ai_modules → EC2:${{ env.TARGET_DIR }}
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}   # ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "./*"
+          target: "${{ env.TARGET_DIR }}/"
+          overwrite: true
+          rm: false
+          strip_components: 0
+          timeout: "120s"
+          exclude: |
+            **/.git/**
+            **/.DS_Store
+            **/__pycache__/**
+            **/.venv/**
+            **/venv/**
+            **/node_modules/**
+
+      - name: Install deps & restart FastAPI service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/fastapi
+
+            # venv 없으면 생성
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+
+            source venv/bin/activate
+
+            deactivate
+
+            sudo systemctl daemon-reload
+            sudo systemctl restart fastapi.service
