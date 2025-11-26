@@ -26,36 +26,40 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-     - name: Check Secret Format (Debug)
+      # [디버깅 단계 추가: 키가 제대로 들어왔는지 확인]
+      - name: Check Secret Format (Debug)
         run: |
-          echo "키 길이 확인:"
+          echo "=== DEBUG START ==="
+          echo "1. Key Length check:"
           echo "${{ secrets.EC2_SSH_KEY }}" | wc -c
-          echo "키 줄 수 확인 (1줄이면 망한 것, 20줄 이상이어야 함):"
+          echo "2. Line Count check (Must be > 1):"
           echo "${{ secrets.EC2_SSH_KEY }}" | wc -l
-          echo "첫 줄 확인:"
+          echo "3. First Line check (Must be BEGIN RSA...):"
           echo "${{ secrets.EC2_SSH_KEY }}" | head -n 1
+          echo "=== DEBUG END ==="
 
       - name: Preflight – check required secrets
         run: |
           [ -n "${{ secrets.EC2_HOST }}" ] && \
           [ -n "${{ secrets.EC2_USER }}" ] && \
-          [ -n "${{ secrets.EC2_SSH_KEY }}" ] || {
-            echo "Missing one of: EC2_HOST / EC2_USER / EC2_SSH_KEY";
-            exit 1;
+          [ -n "${{ secrets.EC2_SSH_KEY }}" ] || { 
+            echo "Missing one of: EC2_HOST / EC2_USER / EC2_SSH_KEY"; 
+            exit 1; 
           }
 
-      - name: Upload ai_modules → EC2:${{ env.TARGET_DIR }}
+      - name: Upload ai_modules → EC2
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}   # ec2-user
+          username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "./*"
           target: "${{ env.TARGET_DIR }}/"
           overwrite: true
           rm: false
-          strip_components: 0
           timeout: "120s"
+
+          use_insecure_cipher: true
           exclude: |
             **/.git/**
             **/.DS_Store
@@ -70,19 +74,21 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          use_insecure_cipher: true
           script: |
             cd /home/ec2-user/fastapi
-
+            
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
 
-            # venv 없으면 생성
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
 
             source venv/bin/activate
-
-            pip install python-dotenv 
+            
+            # 필요한 패키지 설치
+            pip install -r requirements.txt || echo "No requirements.txt found, skipping"
+            pip install python-dotenv fastapi uvicorn requests
 
             deactivate
 
