@@ -64,12 +64,16 @@ jobs:
           script: |
             cd /home/ec2-user/fastapi
 
+            echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
+
             # venv 없으면 생성
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
 
             source venv/bin/activate
+
+            pip install python-dotenv 
 
             deactivate
 
