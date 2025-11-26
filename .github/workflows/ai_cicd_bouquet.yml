@@ -25,7 +25,14 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
+	- name: Check Secret Format (Debug)
+        run: |
+          echo "키 길이 확인:"
+          echo "${{ secrets.EC2_SSH_KEY }}" | wc -c
+          echo "키 줄 수 확인 (1줄이면 망한 것, 20줄 이상이어야 함):"
+          echo "${{ secrets.EC2_SSH_KEY }}" | wc -l
+          echo "첫 줄 확인:"
+          echo "${{ secrets.EC2_SSH_KEY }}" | head -n 1
       - name: Preflight – check required secrets
         run: |
           [ -n "${{ secrets.EC2_HOST }}" ] && \
