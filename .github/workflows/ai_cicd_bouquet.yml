@@ -26,75 +26,34 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Step 1 - Setup Env & Venv
+      - name: Install & Restart Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
+          timeout: "300s"
           script: |
             cd /home/${{ secrets.EC2_USER }}/fastapi
-            echo "Current Location: $(pwd)"
             
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
             echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
-            
+
             if [ ! -d "venv" ]; then
-                echo "Creating venv..."
                 python3 -m venv venv
-            else
-                echo "venv already exists."
             fi
-
-      - name: Step 2 - Pip Install
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          use_insecure_cipher: true
-          timeout: "300s" 
-          script: |
-            cd /home/${{ secrets.EC2_USER }}/fastapi
             source venv/bin/activate
-            
-            echo "Upgrading pip..."
-            pip install --upgrade pip
-            
-            echo "Installing requirements..."
-            pip install -r requirements.txt
 
-      - name: Step 3 - Stop Old Server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          use_insecure_cipher: true
-          script: |
-            echo "=== Killing Old Server ==="
-            
-            sudo fuser -k 8000/tcp || true
-            
-            sudo pkill -f "uvicorn" || true
-            
-            echo "=== Server Stopped Successfully ==="
+            pip install --upgrade pip || true
+            pip install -r requirements.txt || true
 
-      - name: Step 4 - Start New Server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          use_insecure_cipher: true
-          script: |
-            cd /home/${{ secrets.EC2_USER }}/fastapi
-            source venv/bin/activate
+            pkill -f "uvicorn" || true
             
-            echo "Starting server..."
+            # 아주 잠깐 대기 (포트 풀릴 시간)
+            sleep 2
+
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
-            disown
             
-            sleep 3
-            echo "Server start command sent."
+            disown
+            exit 0
