@@ -26,34 +26,70 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Install & Restart
+      - name: Step 1 - Setup Env & Venv
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
-          timeout: "300s"
           script: |
             cd /home/${{ secrets.EC2_USER }}/fastapi
-
-
+            echo "Current Location: $(pwd)"
+            
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
             echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
-
+            
             if [ ! -d "venv" ]; then
+                echo "Creating venv..."
                 python3 -m venv venv
+            else
+                echo "venv already exists."
             fi
-            source venv/bin/activate
 
+      - name: Step 2 - Pip Install
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          use_insecure_cipher: true
+          timeout: "300s" 
+          script: |
+            cd /home/${{ secrets.EC2_USER }}/fastapi
+            source venv/bin/activate
+            
+            echo "Upgrading pip..."
             pip install --upgrade pip
+            
+            echo "Installing requirements..."
             pip install -r requirements.txt
 
-            pkill -f "uvicorn" || true
+      - name: Step 3 - Stop Old Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          use_insecure_cipher: true
+          script: |
+            echo "Stopping uvicorn..."
+            pkill -f "uvicorn" || echo "No running server found"
+
+      - name: Step 4 - Start New Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          use_insecure_cipher: true
+          script: |
+            cd /home/${{ secrets.EC2_USER }}/fastapi
+            source venv/bin/activate
             
+            echo "Starting server..."
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
             disown
-
-            sleep 2
-            echo "Deploy Success!"
-            exit 0
+            
+            sleep 3
+            echo "Server start command sent."
