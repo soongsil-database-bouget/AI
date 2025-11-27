@@ -73,8 +73,13 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
           script: |
-            echo "Stopping uvicorn..."
-            pkill -f "uvicorn" || echo "No running server found"
+            echo "=== Killing Old Server ==="
+            
+            sudo fuser -k 8000/tcp || true
+            
+            sudo pkill -f "uvicorn" || true
+            
+            echo "=== Server Stopped Successfully ==="
 
       - name: Step 4 - Start New Server
         uses: appleboy/ssh-action@v1.0.3
