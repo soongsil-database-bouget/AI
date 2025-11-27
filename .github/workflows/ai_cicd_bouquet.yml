@@ -37,20 +37,23 @@ jobs:
           script: |
             cd /home/${{ secrets.EC2_USER }}/fastapi
 
+
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
+            echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
 
             if [ ! -d "venv" ]; then
                 python3 -m venv venv
             fi
             source venv/bin/activate
 
+            pip install --upgrade pip
             pip install -r requirements.txt
 
             pkill -f "uvicorn" || true
             
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
+            disown
 
             sleep 2
-            
-            echo "Deployment Finished!"
+            echo "Deploy Success!"
             exit 0
