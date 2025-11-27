@@ -33,20 +33,26 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
+          timeout: "300s"
           script: |
             cd /home/${{ secrets.EC2_USER }}/fastapi
 
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
 
-            python3 -m venv venv
+            if [ ! -d "venv" ]; then
+                python3 -m venv venv
+            fi
             source venv/bin/activate
 
-            pip install -r requirements.txt || true
-            pip install fastapi uvicorn requests python-dotenv python-multipart
+            pip install --upgrade pip
+
+            pip install -r requirements.txt
 
             pkill -f "uvicorn" || true
 
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
-            
+
             sleep 3
+
+            echo "Deploy Success!"
             exit 0
