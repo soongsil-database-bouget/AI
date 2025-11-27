@@ -40,20 +40,15 @@ jobs:
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
             echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
 
-            if [ ! -d "venv" ]; then
-                python3 -m venv venv
-            fi
+            if [ ! -d "venv" ]; then python3 -m venv venv; fi
             source venv/bin/activate
-
+            
             pip install --upgrade pip || true
             pip install -r requirements.txt || true
 
             pkill -f "uvicorn" || true
             
-            # 아주 잠깐 대기 (포트 풀릴 시간)
-            sleep 2
-
-            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
+            (nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &)
             
-            disown
+            echo "Server Started in background."
             exit 0
