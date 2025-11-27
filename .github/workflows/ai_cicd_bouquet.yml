@@ -26,7 +26,7 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Register & Start Service (Systemd)
+      - name: Register & Start Service
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
