@@ -3,9 +3,8 @@ import json
 import base64
 import uuid
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,7 +12,7 @@ load_dotenv()
 app = FastAPI()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-# 배포된 서버의 주소 - 나중에 팀원이 알려주는 실제 도메인/IP로 변경 필요
+# 배포된 서버의 주소 (나중에 실제 EC2 IP나 도메인으로 변경)
 YOUR_SITE_URL = "http://localhost:8000" 
 YOUR_SITE_NAME = "BouquetService"
 TARGET_MODEL = "google/gemini-3-pro-image-preview"
@@ -24,33 +23,27 @@ TARGET_MODEL = "google/gemini-3-pro-image-preview"
 
 RESULT_DIR = "static/results"
 os.makedirs(RESULT_DIR, exist_ok=True)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class CompositeRequest(BaseModel):
-    user_image_url: str
-    bouquet_image_url: str
-    prompt_option: str = "standard and natural size"
-
 @app.post("/api/composite-bouquet")
-async def composite_bouquet(request: CompositeRequest):
+async def composite_bouquet(
+    user_image: UploadFile = File(...),    
+    bouquet_image: UploadFile = File(...), 
+):
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="API Key가 설정되지 않았습니다.")
 
-    print(f">>> 요청 수신: {request.user_image_url}")
+    print(f">>> 파일 업로드 요청 수신: {user_image.filename}, {bouquet_image.filename}")
 
     try:
-        # URL -> Base64 변환 함수
-        def url_to_base64(url):
-            try:
-                res = requests.get(url, timeout=10)
-                if res.status_code != 200:
-                    raise Exception(f"다운로드 실패: {res.status_code}")
-                return base64.b64encode(res.content).decode("utf-8")
-            except Exception as e:
-                raise Exception(f"이미지 처리 중 오류: {str(e)}")
-
-        user_b64 = url_to_base64(request.user_image_url)
-        bouquet_b64 = url_to_base64(request.bouquet_image_url)
+        # 유저 이미지 읽기
+        user_bytes = await user_image.read()
+        user_b64 = base64.b64encode(user_bytes).decode("utf-8")
+        
+        # 부케 이미지 읽기
+        bouquet_bytes = await bouquet_image.read()
+        bouquet_b64 = base64.b64encode(bouquet_bytes).decode("utf-8")
 
         # Gemini 프롬프트
         master_prompt = (
@@ -87,8 +80,9 @@ async def composite_bouquet(request: CompositeRequest):
         }
 
         res = requests.post(url, headers=headers, data=json.dumps(payload))
+        
         if res.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"AI 모델 오류: {res.text}")
+            raise HTTPException(status_code=500, detail=f"Gemini API Error: {res.text}")
             
         result = res.json()
         
@@ -104,25 +98,31 @@ async def composite_bouquet(request: CompositeRequest):
         if not final_data:
              raise HTTPException(status_code=500, detail="이미지 생성 데이터 없음")
 
-        # 파일 저장
         filename = f"{uuid.uuid4()}.png"
         save_path = os.path.join(RESULT_DIR, filename)
 
+        # 결과가 Base64인 경우
         if final_data.startswith("data:"):
             with open(save_path, "wb") as f:
                 f.write(base64.b64decode(final_data.split(",")[1]))
+
+        # 결과가 URL인 경우
         elif final_data.startswith("http"):
             img_res = requests.get(final_data)
             with open(save_path, "wb") as f:
                 f.write(img_res.content)
 
-        # 결과 URL 반환 (EC2 서버 주소로 바꿔야 함)
-        # 일단은 상대 경로로 주거나, 나중에 EC2 IP를 알면 그걸로 변경
+        # 결과 URL 반환 
+        full_image_url = f"{YOUR_SITE_URL}/static/results/{filename}"
+        
+        print(f">>> 성공! 결과 반환: {full_image_url}")
+
         return {
             "status": "success",
-            "result_image_url": f"/static/results/{filename}" 
+            "result_image_url": full_image_url,
+            "message": "합성 완료"
         }
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"에러 발생: {e}")
         raise HTTPException(status_code=500, detail=str(e))
