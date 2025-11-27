@@ -85,6 +85,10 @@ jobs:
 
             source venv/bin/activate
             
+            # [★여기 추가] pip를 최신으로 업데이트해서 경고 메시지 없애기
+            pip install --upgrade pip
+
+            # 패키지 설치
             pip install -r requirements.txt || echo "No requirements.txt found"
             pip install python-dotenv fastapi uvicorn requests python-multipart
 
