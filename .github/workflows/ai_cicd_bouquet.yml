@@ -26,7 +26,7 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Install Dependencies Only
+      - name: Install & Restart (Script File Method)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -35,37 +35,45 @@ jobs:
           use_insecure_cipher: true
           timeout: "300s"
           script: |
+
             cd /home/${{ secrets.EC2_USER }}/fastapi
-            
+
+
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
             echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
 
+
+            cat <<EOF > deploy.sh
+            #!/bin/bash
+            
+
             if [ ! -d "venv" ]; then python3 -m venv venv; fi
             source venv/bin/activate
+            
 
-            echo "Installing dependencies..."
-            pip install --upgrade pip || true
-            pip install -r requirements.txt || true
-            echo "Install Completed."
+            pip install --upgrade pip
+            pip install -r requirements.txt
+            
 
-      - name: Restart Server Only
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          use_insecure_cipher: true
-          script: |
-            cd /home/${{ secrets.EC2_USER }}/fastapi
-            source venv/bin/activate
+            echo "Killing old server..."
+            fuser -k 8000/tcp || pkill -f "uvicorn main:app" || true
+            
 
-            echo "Stopping old server..."
-            pkill -f "uvicorn" || true
+            sleep 2
+            
 
             echo "Starting new server..."
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
             
-            sleep 3
+            echo "Deployment Script Finished."
+            EOF
+
+ 
+            chmod +x deploy.sh
+
+            ./deploy.sh
             
-            echo "Server Restart command sent."
+            rm deploy.sh
+            
+            echo "SUCCESS: All commands executed."
             exit 0
