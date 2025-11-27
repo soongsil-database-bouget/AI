@@ -3,6 +3,21 @@ name: ai_cicd_bouquet
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - '.github/workflows/ai_cicd_bouquet.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ai-modules-bouquet-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TARGET_DIR: /home/${{ secrets.EC2_USER }}/fastapi
 
 jobs:
   deploy:
@@ -12,6 +27,11 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Check Secret Format (Debug)
+        run: |
+          echo "Key check start..."
+          echo "${{ secrets.EC2_SSH_KEY }}" | head -n 1
+
       - name: Upload ai_modules → EC2
         uses: appleboy/scp-action@v0.1.4
         with:
@@ -19,11 +39,18 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "./*"
-          target: "/home/${{ secrets.EC2_USER }}/fastapi/"
+          target: "${{ env.TARGET_DIR }}/"
           overwrite: true
+          rm: false
+          timeout: "300s"
           use_insecure_cipher: true
-	  timeout: "300s" 
-
+          exclude: |
+            **/.git/**
+            **/.DS_Store
+            **/__pycache__/**
+            **/.venv/**
+            **/venv/**
+            **/node_modules/**
 
       - name: Install deps & restart FastAPI service
         uses: appleboy/ssh-action@v1.0.3
@@ -33,22 +60,23 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
           timeout: "300s"
-
           script: |
-            cd /home/${{ secrets.EC2_USER }}/fastapi
-            
+            cd ${{ env.TARGET_DIR }}
+
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
 
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
+
             source venv/bin/activate
             
-            pip install -r requirements.txt
+            pip install -r requirements.txt || echo "No requirements.txt found"
+            pip install python-dotenv fastapi uvicorn requests python-multipart
 
             pkill -f "uvicorn main:app" || true
             
-            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 & 
+            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
             
-            sleep 1
+            sleep 2
             exit 0
