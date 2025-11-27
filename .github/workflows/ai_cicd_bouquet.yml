@@ -26,7 +26,7 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Install & Restart Server
+      - name: Install Dependencies Only
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -42,13 +42,30 @@ jobs:
 
             if [ ! -d "venv" ]; then python3 -m venv venv; fi
             source venv/bin/activate
-            
+
+            echo "Installing dependencies..."
             pip install --upgrade pip || true
             pip install -r requirements.txt || true
+            echo "Install Completed."
 
+      - name: Restart Server Only
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          use_insecure_cipher: true
+          script: |
+            cd /home/${{ secrets.EC2_USER }}/fastapi
+            source venv/bin/activate
+
+            echo "Stopping old server..."
             pkill -f "uvicorn" || true
+
+            echo "Starting new server..."
+            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
             
-            (nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &)
+            sleep 3
             
-            echo "Server Started in background."
+            echo "Server Restart command sent."
             exit 0
