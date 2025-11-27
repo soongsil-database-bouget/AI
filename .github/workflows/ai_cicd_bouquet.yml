@@ -27,12 +27,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Check Secret Format (Debug)
+      - name: Remove unnecessary files before upload
         run: |
-          echo "Key check start..."
-          echo "${{ secrets.EC2_SSH_KEY }}" | head -n 1
+          rm -rf .git
+          rm -rf .github
+          rm -rf .gitignore
+          rm -rf venv
+          rm -rf __pycache__
 
-      - name: Clean up remote .git folder
+      - name: Clean up remote server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -40,10 +43,10 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
           script: |
-            if [ -d "${{ env.TARGET_DIR }}/.git" ]; then
-              echo "Found .git folder, removing it to fix permissions..."
-              sudo rm -rf ${{ env.TARGET_DIR }}/.git
+            if [ -d "${{ env.TARGET_DIR }}" ]; then
+               sudo rm -rf ${{ env.TARGET_DIR }}/.git
             fi
+            mkdir -p ${{ env.TARGET_DIR }}
 
       - name: Upload ai_modules → EC2
         uses: appleboy/scp-action@v0.1.4
@@ -57,14 +60,6 @@ jobs:
           rm: false
           timeout: "300s"
           use_insecure_cipher: true
-          exclude: |
-            .git
-            **/.git/**
-            **/.DS_Store
-            **/__pycache__/**
-            **/.venv/**
-            **/venv/**
-            **/node_modules/**
 
       - name: Install deps & restart FastAPI service
         uses: appleboy/ssh-action@v1.0.3
@@ -77,6 +72,8 @@ jobs:
           script: |
             cd ${{ env.TARGET_DIR }}
 
+            ls -la
+
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
 
             if [ ! -d "venv" ]; then
@@ -85,11 +82,9 @@ jobs:
 
             source venv/bin/activate
             
-            # [★여기 추가] pip를 최신으로 업데이트해서 경고 메시지 없애기
             pip install --upgrade pip
-
-            # 패키지 설치
-            pip install -r requirements.txt || echo "No requirements.txt found"
+            
+            pip install -r requirements.txt || echo "requirements.txt not found"
             pip install python-dotenv fastapi uvicorn requests python-multipart
 
             pkill -f "uvicorn main:app" || true
@@ -97,4 +92,5 @@ jobs:
             nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
             
             sleep 2
+            echo "Deployment Finished Successfully!"
             exit 0
