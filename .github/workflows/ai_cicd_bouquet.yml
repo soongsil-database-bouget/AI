@@ -26,7 +26,7 @@ jobs:
           overwrite: true
           use_insecure_cipher: true
 
-      - name: Install & Restart (Script File Method)
+      - name: Register & Start Service (Systemd)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -35,45 +35,50 @@ jobs:
           use_insecure_cipher: true
           timeout: "300s"
           script: |
+            # 1. 경로 설정
+            PROJECT_DIR="/home/${{ secrets.EC2_USER }}/fastapi"
+            cd $PROJECT_DIR
 
-            cd /home/${{ secrets.EC2_USER }}/fastapi
-
-
+            # 2. 환경 변수 파일 생성
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
             echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
 
-
-            cat <<EOF > deploy.sh
-            #!/bin/bash
-            
-
+            # 3. 가상환경 및 패키지 설치
             if [ ! -d "venv" ]; then python3 -m venv venv; fi
             source venv/bin/activate
+            pip install --upgrade pip || true
+            pip install -r requirements.txt || true
             
+            # ========================================================
+            # [★최종 해결책] 리눅스 시스템 서비스(Systemd)로 등록
+            # 이렇게 하면 SSH 연결이 끊겨도 서버는 절대 죽지 않음
+            # ========================================================
+            
+            # 서비스 파일 생성 (관리자 권한 필요)
+            sudo bash -c "cat > /etc/systemd/system/bouquet.service <<EOF
+            [Unit]
+            Description=Bouquet FastAPI Service
+            After=network.target
 
-            pip install --upgrade pip
-            pip install -r requirements.txt
-            
+            [Service]
+            User=${{ secrets.EC2_USER }}
+            WorkingDirectory=$PROJECT_DIR
+            EnvironmentFile=$PROJECT_DIR/.env
+            ExecStart=$PROJECT_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+            Restart=always
 
-            echo "Killing old server..."
-            fuser -k 8000/tcp || pkill -f "uvicorn main:app" || true
-            
+            [Install]
+            WantedBy=multi-user.target
+            EOF"
 
-            sleep 2
-            
+            # 4. 서비스 실행 (명령어만 던지면 즉시 리턴됨 -> 타임아웃 해결)
+            sudo systemctl daemon-reload
+            sudo systemctl enable bouquet
+            sudo systemctl restart bouquet
 
-            echo "Starting new server..."
-            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 < /dev/null &
+            # 5. 상태 확인 (잘 떴는지 확인만 하고 종료)
+            echo "Service Restarted. Checking status..."
+            sudo systemctl status bouquet --no-pager
             
-            echo "Deployment Script Finished."
-            EOF
-
- 
-            chmod +x deploy.sh
-
-            ./deploy.sh
-            
-            rm deploy.sh
-            
-            echo "SUCCESS: All commands executed."
+            echo "DEPLOYMENT SUCCESS!"
             exit 0
