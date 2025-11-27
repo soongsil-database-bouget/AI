@@ -21,7 +21,9 @@ jobs:
           source: "./*"
           target: "/home/${{ secrets.EC2_USER }}/fastapi/"
           overwrite: true
-          use_insecure_cipher: true 
+          use_insecure_cipher: true
+	  timeout: "300s" 
+
 
       - name: Install deps & restart FastAPI service
         uses: appleboy/ssh-action@v1.0.3
@@ -30,6 +32,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           use_insecure_cipher: true
+	  timeout: "300s"
           script: |
             cd /home/${{ secrets.EC2_USER }}/fastapi
             
@@ -43,4 +46,8 @@ jobs:
             pip install -r requirements.txt
 
             pkill -f "uvicorn main:app" || true
-            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
+            
+            nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 & 
+            
+            sleep 1
+            exit 0
