@@ -40,7 +40,7 @@ jobs:
             cd $PROJECT_DIR
 
             echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
-            echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8000" >> .env
+            echo "YOUR_SITE_URL=http://${{ secrets.EC2_HOST }}:8001" >> .env
 
             if [ ! -d "venv" ]; then python3 -m venv venv; fi
             source venv/bin/activate
