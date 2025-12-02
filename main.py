@@ -61,7 +61,7 @@ async def composite_bouquet(
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
-            "Referer": YOUR_SITE_URL,
+            "HTTP-Referer": YOUR_SITE_URL,
             "X-Title": YOUR_SITE_NAME,
         }
         payload = {
