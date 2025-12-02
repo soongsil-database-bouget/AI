@@ -12,7 +12,7 @@ load_dotenv()
 app = FastAPI()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-YOUR_SITE_URL = os.getenv("YOUR_SITE_URL", "http://localhost:8000")
+YOUR_SITE_URL = os.getenv("YOUR_SITE_URL", "http://localhost:8001")
 YOUR_SITE_NAME = "BouquetService"
 TARGET_MODEL = "google/gemini-3-pro-image-preview"
 
